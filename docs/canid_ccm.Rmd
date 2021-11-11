@@ -1,0 +1,95 @@
+---
+title: "Applying EDM to Canid diversification"
+---
+
+
+```{r setup, echo = FALSE, eval = FALSE}
+
+library("rEDM")
+library("foreach")
+library("doMC")
+here::i_am("docs/canid_ccm.Rmd")
+
+## Importing times of speciation and extinction
+canidae.tste <- read.table(here::here("data/canidae.txt"), header = TRUE, sep = "\t")
+names(canidae.tste)[3:ncol(canidae.tste)] <- paste(rep(c("ts", "te"), 100), rep(1:100, each = 2), sep = ".")
+
+## Generating time vector
+t <- seq(45, 0, by = -0.1)
+
+## Calculating diversity through time for each replica
+canidae.div <- data.frame(clade = canidae.tste$clade,
+                          species = canidae.tste$species)
+
+canid.div.list <- vector(mode = "list", length = 100)
+
+for(j in 1:length(canid.div.list)){
+    canid.div.list[[j]] <- canidae.div
+    for(i in 1:length(t)){
+        canid.div.list[[j]][, i + 2] <- apply(canidae.tste[, paste(c("ts", "te"), j, sep = ".")], 1, function(x, t){t <= x[1] & t >= x[2]}, t = t[i])
+    }
+}
+
+# Clade order
+# 0	Hesperocyoninae
+# 1	Borophaginae
+# 2	Caninae
+# 3	Amphicyonidae
+# 4	Nimvravidae
+# 5	Felidae
+# 6	Barbourofelidae
+# 7	Ursidae
+
+canid.div <- lapply(canid.div.list, function(x){aggregate(x[, 3:ncol(x)], by = list(x$clade), FUN = sum)})
+
+div.plot <- vector(mode = "list", length = length(canid.div))
+
+for(i in 1:length(div.plot)){
+    div.plot[[i]] <- data.frame(time = t)
+    div.plot[[i]] <- cbind(div.plot[[i]], t(canid.div[[i]][, 2:ncol(canid.div[[i]])]))
+    names(div.plot[[i]])[2:ncol(div.plot[[i]])] <- c("Hesperocyoninae", "Borophaginae", "Caninae", "Amphicyonidae", "Nimravidae", "Felidae", "Barbourofelidae", "Ursidae")
+}
+
+saveRDS(div.plot, file = here::here("data/dtt_canid_replicas.RDS"))
+
+```
+
+
+```{r ccm_all, echo = FALSE}
+
+raw.div <- readRDS(here::here("data/dtt_canid_replicas.RDS"))
+
+## Testing delays
+
+div.diff <- lapply(raw.div, function(x){lapply(x[, 2:ncol(x)], simplex, E = 2:10)})
+
+embed.dim <- plyr::ldply(div.diff, function(x){sapply(x, function(y){which.max(y$rho)})})
+names(embed.dim) <- c("Hesperocyoninae", "Borophaginae", "Caninae", "Amphicyonidae", "Nimravidae", "Felidae", "Barbourofelidae", "Ursidae")
+
+## Mapping all pairwise combinations between clades
+
+registerDoMC(10)
+
+xmap_all <- vector(mode = "list", length = ncol(embed.dim))
+
+for(k in 1:ncol(embed.dim)){
+    xmap_all[[k]] <- vector(mode = "list", length = ncol(embed.dim))
+    for(j in k:length(xmap_all[[k]])){
+        if(k != j){
+            xmap_all[[k]][[j]] <- foreach(i = 1:nrow(embed.dim)) %dopar% {
+                print(paste0("Mapping ", names(embed.dim)[k], " into ", names(embed.dim)[j], " - Replica ", i))
+                CCM(dataFrame = raw.div[[j]],
+                    E = embed.dim[i, k],
+                    columns = names(embed.dim)[k],
+                    target = names(embed.dim)[j],
+                    libSizes = "10 450 10",
+                    sample = 100)
+            }
+        }
+    }
+    #names(xmap_all)[[k]] <- paste(names(embed.dim)[k], names(embed.dim), sep = ":")
+}
+
+saveRDS(xmap_all, here::here("output/xmap_all.RDS"))
+
+```
