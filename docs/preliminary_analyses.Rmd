@@ -1,0 +1,116 @@
+---
+title: "Preliminary Analyses"
+---
+
+
+```{r}
+
+library("rEDM")
+here::i_am("docs/preliminary_analyses.Rmd")
+
+canidae.tste <- read.table(here::here("data/canidae.txt"), header = TRUE, sep = "\t")
+names(canidae.tste)[3:ncol(canidae.tste)] <- paste(rep(c("ts", "te"), 100), rep(1:100, each = 2), sep = ".")
+
+t <- seq(45, 0, by = -0.1)
+
+canidae.div <- data.frame(clade = canidae.tste$clade,
+                          species = canidae.tste$species)
+                          
+for(i in 1:length(t)){
+    canidae.div[, i + 2] <- apply(canidae.tste[, 3:4], 1, function(x, t){t <= x[1] & t >= x[2]}, t = t[i])
+}
+
+# Clade order
+# 0	Hesperocyoninae
+# 1	Borophaginae
+# 2	Caninae
+# 3	Amphicyonidae
+# 4	Nimvravidae
+# 5	Felidae
+# 6	Barbourofelidae
+# 7	Ursidae
+
+canid.div <- aggregate(canidae.div[, 3:ncol(canidae.div)], by = list(canidae.div$clade), FUN = sum)
+
+div.plot <- data.frame(time = t)
+div.plot <- cbind(div.plot, t(canid.div[, 2:ncol(canid.div)]))
+names(div.plot)[2:ncol(div.plot)] <- c("Hesperocyoninae", "Borophaginae", "Caninae", "Amphicyonidae", "Nimravidae", "Felidae", "Barbourofelidae", "Ursidae")
+
+write.table(div.plot, file = here::here("data/dtt_canid.csv"), sep = ",", quote = FALSE, row.names = FALSE)
+
+plot(div.plot$Hesperocyoninae ~ div.plot$time, type = "l", ylim = c(0, 35), lwd = 2)
+lines(div.plot$Borophaginae ~ div.plot$time, col = 2, lwd = 2)
+
+```
+
+
+```{r}
+
+raw.div <- read.csv(here::here("data/dtt_canid.csv"))
+
+## Testing delays
+
+div.diff <- lapply(raw.div, simplex, E = 2:10)
+
+embed.dim <- sapply(div.diff, function(x){which.max(x$rho)})
+
+## Cross map from Boro to Hespero
+
+hespero_xmap_boro <- CCM(dataFrame = raw.div,
+                         E = embed.dim[1],
+                         columns = "Hesperocyoninae",
+                         target = "Borophaginae",
+                         libSizes = "10 450 10",
+                         sample = 100,
+                         showPlot = TRUE)
+
+plot(hespero_xmap_boro$'Borophaginae:Hesperocyoninae' ~ hespero_xmap_boro$LibSize, lwd = 3, col = "red", type = "l")
+lines(hespero_xmap_boro$'Hesperocyoninae:Borophaginae' ~ hespero_xmap_boro$LibSize, lwd = 3, col = "blue", type = "l")
+legend("topleft", legend = c("Hespero:Boro", "Boro:Hespero"), col = c("blue", "red"), lwd = 3)
+
+
+
+boro_xmap_caninae <- ccm(raw.div,
+                         E = embed.dim[2],
+                         lib_column = "Borophaginae",
+                         target_column = "Caninae",
+                         lib_sizes = c(seq(1, 100, 1), seq(101, nrow(raw.div), 50)),
+                         random_libs = TRUE,
+                         replace = TRUE)
+
+plot(boro_xmap_caninae$'Caninae:Borophaginae' ~ boro_xmap_caninae$LibSize, lwd = 3, col = "red", type = "b")
+lines(boro_xmap_caninae$'Borophaginae:Caninae' ~ boro_xmap_caninae$LibSize, lwd = 3, col = "blue", type = "b")
+abline(h = abs(cor(raw.div$Borophaginae, raw.div$Caninae)), lty = 2, col = "black", lwd = 2)
+legend("bottomright", legend = c("Caninae:Boro", "Boro:Caninae"), col = c("blue", "red"), lwd = 3)
+
+
+
+felidae_xmap_boro <- ccm(raw.div,
+                         E = embed.dim[6],
+                         lib_column = "Felidae",
+                         target_column = "Borophaginae",
+                         lib_sizes = c(seq(1, 100, 1), seq(101, nrow(raw.div), 50)),
+                         random_libs = TRUE,
+                         replace = TRUE)
+
+plot(felidae_xmap_boro$'Felidae:Borophaginae' ~ felidae_xmap_boro$LibSize, lwd = 3, col = "red", type = "b")
+lines(felidae_xmap_boro$'Borophaginae:Felidae' ~ felidae_xmap_boro$LibSize, lwd = 3, col = "blue", type = "b")
+abline(h = abs(cor(raw.div$Borophaginae, raw.div$Felidae)), lty = 2, col = "black", lwd = 2)
+legend("bottomright", legend = c("Felidae:Boro", "Boro:Felidae"), col = c("blue", "red"), lwd = 3)
+
+
+
+felidae_xmap_caninae <- ccm(raw.div,
+                         E = embed.dim[6],
+                         lib_column = "Felidae",
+                         target_column = "Caninae",
+                         lib_sizes = c(seq(1, 100, 1), seq(101, nrow(raw.div), 50)),
+                         random_libs = TRUE,
+                         replace = TRUE)
+
+plot(felidae_xmap_caninae$'Felidae:Caninae' ~ felidae_xmap_caninae$LibSize, lwd = 3, col = "red", type = "b")
+lines(felidae_xmap_caninae$'Caninae:Felidae' ~ felidae_xmap_caninae$LibSize, lwd = 3, col = "blue", type = "b")
+abline(h = abs(cor(raw.div$Borophaginae, raw.div$Felidae)), lty = 2, col = "black", lwd = 2)
+legend("bottomright", legend = c("Felidae:Caninae", "Boro:Caninae"), col = c("blue", "red"), lwd = 3)
+
+```

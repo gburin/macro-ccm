@@ -1,0 +1,12 @@
+---
+title: "Preliminary Analyses"
+---
+
+
+```{r}
+
+install.packages("rEDM")
+here::i_am("preliminary_analyses.Rmd")
+
+canidae.div <- read.table(
+```
